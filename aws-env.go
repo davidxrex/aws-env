@@ -14,6 +14,7 @@ import (
 const (
 	formatExports = "exports"
 	formatDotenv  = "dotenv"
+	formatJavaProp  = "prop"
 )
 
 func main() {
@@ -26,9 +27,9 @@ func main() {
 	format := flag.String("format", formatExports, "output format")
 	flag.Parse()
 
-	if *format == formatExports || *format == formatDotenv {
-	} else {
-		log.Fatal("Unsupported format option. Must be 'exports' or 'dotenv'")
+	if *format != formatExports && *format != formatDotenv && *format != formatJavaProp{
+		log.Fatal("Unsupported format option. Must be 'exports', 'dotenv', or 'prop'")
+		os.Exit(1)
 	}
 
 	sess := CreateSession()
@@ -63,7 +64,7 @@ func ExportVariables(client *ssm.SSM, path string, recursive bool, format string
 	}
 
 	for _, element := range output.Parameters {
-		OutputParameter(path, element, format)
+		OutputParameter(path, element, getLatestDescription(client, element), format)
 	}
 
 	if output.NextToken != nil {
@@ -71,7 +72,38 @@ func ExportVariables(client *ssm.SSM, path string, recursive bool, format string
 	}
 }
 
-func OutputParameter(path string, parameter *ssm.Parameter, format string) {
+func getLatestDescription(client *ssm.SSM, parameter *ssm.Parameter) string {
+	description := ""
+
+	input := &ssm.GetParameterHistoryInput{
+		Name: parameter.Name,
+		//MaxResults: func(i int64) *int64 { return &i }(1),
+	}
+
+	for {
+		output, err := client.GetParameterHistory(input)
+
+		if err != nil {
+			log.Panic(err)
+		}
+
+		for _, history := range output.Parameters {
+			if history.Description != nil {
+				description = *history.Description
+			}
+		}
+
+		if output.NextToken == nil {
+			break
+		}
+
+		input.NextToken = output.NextToken
+	}
+
+	return description
+}
+
+func OutputParameter(path string, parameter *ssm.Parameter, description string, format string) {
 	name := *parameter.Name
 	value := *parameter.Value
 
@@ -83,5 +115,11 @@ func OutputParameter(path string, parameter *ssm.Parameter, format string) {
 		fmt.Printf("export %s=$'%s'\n", env, value)
 	case formatDotenv:
 		fmt.Printf("%s=\"%s\"\n", env, value)
+	case formatJavaProp:
+		if description != "" {
+			fmt.Printf("# %s\n", description)
+		}
+		key := strings.Replace(strings.Trim(name[len(path):], "/"), "/", ".", -1)
+		fmt.Printf("%s = %s\n", key, value)
 	}
 }
