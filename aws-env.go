@@ -18,24 +18,25 @@ const (
 )
 
 func main() {
-	if os.Getenv("AWS_ENV_PATH") == "" {
-		log.Println("aws-env running locally, without AWS_ENV_PATH")
-		return
-	}
-
-	recursivePtr := flag.Bool("recursive", false, "recursively process parameters on path")
-	format := flag.String("format", formatExports, "output format")
+	recursivePtr := flag.Bool("recursive", true, "Recursively process parameters on path.")
+	format := flag.String("format", "prop", "Output format {exports|dotenv|prop}. (Required)")
+	path := flag.String("path", "", "Parameter path. (Required)")
 	flag.Parse()
 
-	if *format != formatExports && *format != formatDotenv && *format != formatJavaProp{
+	if *format != formatExports && *format != formatDotenv && *format != formatJavaProp {
 		log.Fatal("Unsupported format option. Must be 'exports', 'dotenv', or 'prop'")
+		os.Exit(1)
+	}
+
+	if *path == "" {
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
 	sess := CreateSession()
 	client := CreateClient(sess)
 
-	ExportVariables(client, os.Getenv("AWS_ENV_PATH"), *recursivePtr, *format, "")
+	ExportVariables(client, *path, *recursivePtr, *format, "")
 }
 
 func CreateSession() *session.Session {
